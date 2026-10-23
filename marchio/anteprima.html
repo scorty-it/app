@@ -1,0 +1,46 @@
+<!doctype html>
+<!--
+  L'immagine delle anteprime dei link (web/public/anteprima.png, 1200×630).
+  Il contenuto sta al centro: WhatsApp nelle anteprime piccole ritaglia un quadrato centrale.
+  Per rigenerarla, dalla cartella del progetto, con Chromium o Chrome headless:
+    chrome-headless-shell --screenshot=web/public/anteprima.png --window-size=1200,630 --hide-scrollbars file://$PWD/marchio/anteprima.html
+-->
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face {
+    font-family: Figtree;
+    src: url(../web/node_modules/@fontsource-variable/figtree/files/figtree-latin-wght-normal.woff2) format('woff2');
+    font-weight: 300 900;
+  }
+  html, body { margin: 0; }
+  body {
+    width: 1200px; height: 630px; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #171e2e; /* tinta unita: senza sfumature il PNG resta sotto i 300 KB che WhatsApp accetta */
+    color: #f2f3f5; font-family: Figtree, sans-serif; text-align: center;
+  }
+  svg { width: 132px; height: 132px; }
+  h1 { margin: 22px 0 0; font-size: 78px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
+  p { margin: 18px 0 0; font-size: 32px; font-weight: 500; color: #b4bac6; }
+  footer { margin-top: 44px; font-size: 30px; font-weight: 700; letter-spacing: 0.01em; }
+  footer span { color: #8a91a0; font-weight: 500; }
+</style>
+</head>
+<body>
+  <!-- Il marchio nella versione per fondi scuri (come scorty-logo-bianco.png) -->
+  <svg viewBox="0 0 64 64">
+    <path d="M32 61L14.66 41.11A23 23 0 1 1 49.34 41.11Z" fill="#fff"/>
+    <circle cx="32" cy="26" r="16.5" fill="#16181d"/>
+    <path d="M22.01 25.76A10.5 10.5 0 0 1 24.97 21.20" stroke="#ef4444" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+    <path d="M29.28 18.86A10.5 10.5 0 0 1 34.72 18.86" stroke="#f59e0b" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+    <path d="M39.03 21.20A10.5 10.5 0 0 1 41.99 25.76" stroke="#22c55e" stroke-width="4.4" stroke-linecap="round" fill="none"/>
+    <path d="M32 29L38.51 23.54" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/>
+    <circle cx="32" cy="29" r="3.23" fill="#fff"/>
+  </svg>
+  <h1>Dove c’è benzina adesso</h1>
+  <p>Benzina, gasolio, GPL e metano: lo segnala chi è al distributore</p>
+  <footer>scorty.it <span>· gratis, senza account</span></footer>
+</body>
+</html>

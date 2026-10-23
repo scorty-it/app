@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# Security review esattamente di quello che si sta pushando (skill security-review-range).
+# Installato dalla skill utente `security-review-setup`; aree ed esclusioni di
+# questo repo stanno in .githooks/security-review-areas.
+#
+# Da attivare una volta per clone:   git config core.hooksPath .githooks
+# Per saltarla consapevolmente:      SKIP_SECURITY_REVIEW=1 git push   (o --no-verify)
+#
+# L'intervallo è esplicito (sha remoto..sha locale, o merge-base con il ramo
+# di default del remoto per un ramo nuovo): /security-review da solo confronta
+# con origin/HEAD, che non dice niente di quello che questo push aggiunge.
+# Senza una base comune (repo appena creato, storia nuova) si rivede tutto il
+# contenuto. I package-lock.json cambiati si controllano prima, senza LLM
+# (controlla-lockfile.ts).
+# Fail-safe: se la review non riesce a girare o il verdetto è illeggibile, il
+# push si blocca.
+set -euo pipefail
+
+if [[ "${SKIP_SECURITY_REVIEW:-}" == "1" ]]; then
+  echo "pre-push: security review saltata (SKIP_SECURITY_REVIEW=1)." >&2
+  exit 0
+fi
+
+remote="${1:-origin}"
+zero="0000000000000000000000000000000000000000"
+repo_root="$(git rev-parse --show-toplevel)"
+report_dir="$(git rev-parse --path-format=absolute --git-common-dir)/security-reviews"
+areas_file="$repo_root/.githooks/security-review-areas"
+hooks_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+default_ref="$(git symbolic-ref -q --short "refs/remotes/$remote/HEAD" || true)"
+if [[ -z "$default_ref" ]] && git rev-parse -q --verify "refs/remotes/$remote/main" >/dev/null; then
+  default_ref="$remote/main"
+fi
+
+# Aree ed esclusioni. Formato del file, una per riga:
+#   <area>: <pathspec> <pathspec> ...     → <area>.patch per chi fa la review
+#   exclude: <glob> <glob> ...            → non si rivede (documentazione, test)
+# Array indicizzati paralleli e non `declare -A`: macOS ha ancora bash 3.2.
+not_reviewed=(':(exclude,glob)**/*.md' ':(exclude,glob)docs/**'
+  ':(exclude,glob)**/test/**' ':(exclude,glob)**/tests/**' ':(exclude,glob)**/__tests__/**')
+area_names=()
+area_specs=()
+if [[ -f "$areas_file" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    [[ "$line" != *:* ]] && continue
+    name="$(printf '%s' "${line%%:*}" | tr -d '[:space:]')"
+    specs="${line#*:}"
+    if [[ "$name" == "exclude" ]]; then
+      read -ra globs <<<"$specs"
+      not_reviewed=()
+      for g in "${globs[@]}"; do not_reviewed+=(":(exclude,glob)$g"); done
+    elif [[ "$name" =~ ^[a-z0-9_-]+$ ]]; then
+      read -ra pathspecs <<<"$specs"
+      area_names+=("$name")
+      area_specs+=("${pathspecs[*]}")
+    fi
+  done <"$areas_file"
+fi
+
+ranges=()
+while read -r local_ref local_sha _remote_ref remote_sha; do
+  [[ -z "${local_ref:-}" ]] && continue
+  [[ "$local_sha" == "$zero" ]] && continue
+  [[ "$local_ref" == refs/tags/* ]] && continue
+  if [[ "$remote_sha" != "$zero" ]] && git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    base="$remote_sha"
+  elif [[ -n "$default_ref" ]] && base="$(git merge-base "$default_ref" "$local_sha")"; then
+    :
+  else
+    echo "pre-push: nessuna base comune con '$remote' per $local_ref: review di tutto il contenuto." >&2
+    base="$empty_tree"
+  fi
+  [[ "$base" == "$local_sha" ]] && continue
+  # npm ci scarica da qualsiasi "resolved": i lockfile si controllano in modo deterministico, prima della review.
+  while IFS= read -r f; do
+    if ! command -v node >/dev/null 2>&1; then
+      echo "pre-push: $f è cambiato ma 'node' non è nel PATH per controllarlo: push bloccato." >&2
+      exit 1
+    fi
+    if ! git show "$local_sha:$f" | node "$hooks_dir/controlla-lockfile.ts" - "$f"; then
+      echo "pre-push: $f scarica pacchetti da fuori il registro di npm: push bloccato." >&2
+      exit 1
+    fi
+  done < <(git diff --name-only --diff-filter=d "$base" "$local_sha" -- ':(glob)**/package-lock.json')
+  if git diff --quiet "$base" "$local_sha" -- . "${not_reviewed[@]}"; then
+    echo "pre-push: $local_ref cambia solo documentazione o test, niente review." >&2
+    continue
+  fi
+  ranges+=("$base..$local_sha")
+done
+
+[[ ${#ranges[@]} -eq 0 ]] && exit 0
+
+if ! command -v claude >/dev/null 2>&1; then
+  echo "pre-push: 'claude' non è nel PATH, la security review non può girare: push bloccato." >&2
+  echo "          Saltarla consapevolmente: SKIP_SECURITY_REVIEW=1 git push" >&2
+  exit 1
+fi
+
+# Chi fa la review non ha una shell: un'allowlist come `Bash(git log:*)` fa
+# passare anche `git log --output=<file>`, cioè scrivere qualsiasi file, e il
+# codice in esame è input non fidato. Il hook prepara quello che avrebbe chiesto a git.
+prepare_context() {
+  local base="$1" head="$2" dir="$3" i specs
+  if [[ "$base" == "$empty_tree" ]]; then git log --oneline "$head"; else git log --oneline "$base..$head"; fi >"$dir/log.txt"
+  git diff --stat "$base" "$head" >"$dir/stat.txt"
+  git diff "$base" "$head" >"$dir/diff.patch"
+  : >"$dir/areas.txt"
+  for i in "${!area_names[@]}"; do
+    read -ra specs <<<"${area_specs[$i]}"
+    git diff "$base" "$head" -- "${specs[@]}" >"$dir/${area_names[$i]}.patch"
+    echo "${area_names[$i]}: ${area_specs[$i]}" >>"$dir/areas.txt"
+  done
+}
+
+mkdir -p "$report_dir"
+failed=0
+for range in "${ranges[@]}"; do
+  base="${range%%..*}"
+  head="${range##*..}"
+  report="$report_dir/$(date -u +%Y%m%dT%H%M%SZ)_${base:0:10}_${head:0:10}.md"
+  echo "pre-push: security review di ${base:0:10}..${head:0:10} (qualche minuto)…" >&2
+  ctx="$(mktemp -d)"
+  prepare_context "$base" "$head" "$ctx"
+  reviewed=0
+  (cd "$repo_root" && env -u CLAUDECODE timeout "${SECURITY_REVIEW_TIMEOUT:-1800}" \
+      claude -p "/security-review-range $range --context $ctx" \
+        --no-session-persistence \
+        --strict-mcp-config \
+        --permission-mode dontAsk \
+        --add-dir "$ctx" \
+        --settings '{"disableAllHooks":true}' \
+        --disallowedTools Bash Edit Write NotebookEdit WebFetch WebSearch \
+        --allowedTools Read Grep Glob Agent Skill \
+        </dev/null >"$report" 2>&1) || reviewed=$?
+  rm -rf "$ctx"
+  if [[ $reviewed -ne 0 ]]; then
+    echo "pre-push: la review di $range non è arrivata in fondo: push bloccato. Output: $report" >&2
+    failed=1
+    continue
+  fi
+  verdict="$(grep -Ev '^[[:space:]]*(```)?[[:space:]]*$' "$report" | tail -n 1 | tr -d '[:space:]' || true)"
+  case "$verdict" in
+    SECURITY-REVIEW:PASS)
+      echo "pre-push: security review PASS ($report)." >&2
+      ;;
+    SECURITY-REVIEW:FAIL[0-9]*)
+      cat "$report" >&2
+      echo "pre-push: security review FAIL: push bloccato. Report: $report" >&2
+      failed=1
+      ;;
+    *)
+      echo "pre-push: esito della review illeggibile: push bloccato. Output: $report" >&2
+      failed=1
+      ;;
+  esac
+done
+
+exit "$failed"

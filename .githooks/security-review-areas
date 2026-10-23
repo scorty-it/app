@@ -1,0 +1,11 @@
+# Aree della security review: <area>: <pathspec>...   (pathspec di git, :(glob) per i glob)
+# Il hook pre-push fa un <area>.patch per ognuna; la skill security-review-range usa la stessa tabella.
+database: api/db/migrazioni api/db/esempio.sql api/src/db.ts api/src/migra.ts api/src/pulizia.ts
+backend: api/src api/tsconfig.json
+dipendenze: api/package.json api/package-lock.json web/package.json web/package-lock.json
+deploy: compose.yml Caddyfile api/Dockerfile api/.dockerignore web/Dockerfile web/.dockerignore .env.example .gitignore scripts
+client: web/src web/public web/index.html web/vite.config.ts web/tsconfig.json web/components.json
+tooling: .githooks .claude CLAUDE.md
+# Non si rivedono: documentazione per le persone, test, immagini del marchio, dati di esempio.
+# CLAUDE.md e i SKILL.md invece sì: sono istruzioni anche per chi fa la review.
+exclude: README.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md LICENSE docs/** **/*.test.ts scripts/test/** marchio/** api/db/demo-distributori.json

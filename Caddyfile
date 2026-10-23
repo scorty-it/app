@@ -1,0 +1,62 @@
+# Nessun log di accesso: gli IP dei visitatori non vengono scritti su disco.
+{
+	servers {
+		# X-Forwarded-For accettato solo da reti private, cioè da un eventuale proxy di sistema davanti a questo.
+		trusted_proxies static private_ranges
+	}
+	# Gli errori restano nel log (per esempio l'API ferma durante un deploy), ma senza la richiesta che li ha causati:
+	# IP, indirizzo (con posizione e testo cercato) e intestazioni. Test: scripts/test/caddy_log_test.sh.
+	log default {
+		format filter {
+			wrap json
+			fields {
+				request>remote_ip delete
+				request>remote_port delete
+				request>client_ip delete
+				request>uri delete
+				request>headers delete
+			}
+		}
+	}
+}
+
+# SITI e DOMINIO vengono dal file .env (vedi .env.example).
+# Su un server dedicato SITI elenca i domini e Caddy ottiene da solo i certificati HTTPS (Let's Encrypt).
+{$SITI} {
+	# www e domini alternativi (es. emergenzascorte.it) rimandano al dominio principale.
+	@altro_dominio not host {$DOMINIO}
+	redir @altro_dominio https://{$DOMINIO}{uri} permanent
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+	}
+
+	# L'app non si mette dentro i siti di altri. Il widget per testate ed enti (web/widget.html) sì, ma solo da siti https e
+	# dall'anteprima di «Incorpora»: è in sola lettura, senza pulsanti che cambiano qualcosa, e non carica la mappa.
+	@widget path /widget/*
+	@app not path /widget/*
+	header @app Content-Security-Policy "default-src 'self'; connect-src 'self' https://tiles.openfreemap.org; img-src 'self' data: blob: https://tiles.openfreemap.org; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'"
+	header @widget Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'self' https:"
+
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	handle /widget/* {
+		root * /srv
+		rewrite * /widget.html
+		file_server
+	}
+
+	handle {
+		root * /srv
+		# /province/SA trova province/SA.html: la stessa app con il titolo e l'anteprima della provincia (vite.config.ts).
+		try_files {path} {path}.html /index.html
+		file_server
+	}
+}

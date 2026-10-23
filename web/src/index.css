@@ -1,0 +1,147 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: "Figtree Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+    /* Unica ombra per tutto ciò che galleggia sulla mappa */
+    --shadow-float: 0 0 0 1px rgb(16 24 40 / 0.04), 0 2px 6px rgb(16 24 40 / 0.06), 0 8px 20px rgb(16 24 40 / 0.12);
+}
+
+/* Chiaro: bianco, inchiostro quasi nero e angoli morbidi. Il colore lo portano gli stati sulla mappa. */
+:root {
+    color-scheme: light;
+    --background: #ffffff;
+    --foreground: #16181d;
+    --card: #ffffff;
+    --card-foreground: #16181d;
+    --popover: #ffffff;
+    --popover-foreground: #16181d;
+    --primary: #16181d;
+    --primary-foreground: #ffffff;
+    --secondary: #f3f4f6;
+    --secondary-foreground: #16181d;
+    --muted: #f3f4f6;
+    --muted-foreground: #5f6470;
+    --accent: #f3f4f6;
+    --accent-foreground: #16181d;
+    --destructive: #dc2626;
+    --border: #e6e7eb;
+    --input: #dcdee3;
+    --ring: #9ca3af;
+    --radius: 0.875rem;
+}
+
+/* Scuro: grafite, non nero, sopra la mappa blu notte (stile Fiord). */
+.dark {
+    color-scheme: dark;
+    --background: #12141a;
+    --foreground: #f2f3f5;
+    --card: #1d2028;
+    --card-foreground: #f2f3f5;
+    --popover: #1d2028;
+    --popover-foreground: #f2f3f5;
+    --primary: #f2f3f5;
+    --primary-foreground: #16181d;
+    --secondary: #2a2e38;
+    --secondary-foreground: #f2f3f5;
+    --muted: #2a2e38;
+    --muted-foreground: #a0a6b1;
+    --accent: #2a2e38;
+    --accent-foreground: #f2f3f5;
+    --destructive: #f87171;
+    --border: #2f343e;
+    --input: #3a404b;
+    --ring: #6b7280;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  html {
+    @apply font-sans antialiased;
+    }
+}
+/* Barre di scorrimento nascoste per le file di filtri orizzontali */
+.senza-barra { scrollbar-width: none; }
+.senza-barra::-webkit-scrollbar { display: none; }
+
+/* Il controllo di geolocalizzazione di MapLibre resta attivo ma lo comandiamo dal nostro pulsante */
+.maplibregl-ctrl-geolocate { display: none !important; }
+
+/* Testo delle pagine informative */
+@layer components {
+  .testo h2 { @apply pt-3 text-base font-semibold; }
+  .testo ul:not([class]) { @apply list-disc space-y-1.5 pl-5; }
+  .testo a { @apply underline underline-offset-2; }
+}
+
+/* Lancetta dell'indicatore mentre si caricano i dati */
+@keyframes oscilla {
+  from { transform: rotate(-60deg); }
+  to { transform: rotate(60deg); }
+}
+.oscilla { animation: oscilla 0.9s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .oscilla { animation: none; } }
+
+/* Spilli sulla mappa. MapLibre muove il <button>; le animazioni stanno sullo <span> interno. */
+.spillo-tasto { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.spillo-tasto:has(.pallino) { padding: 9px; } /* area di tocco più grande del pallino */
+.spillo { display: block; transform-origin: 50% 100%; transition: scale 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); filter: drop-shadow(0 2px 2px rgb(16 24 40 / 0.35)); }
+.spillo.pallino { transform-origin: 50% 50%; }
+.spillo img { display: block; width: 40px; height: 50px; transition: opacity 0.3s; }
+.spillo.pallino img { width: 18px; height: 18px; }
+.sel .spillo { scale: 1.25; }
+.vecchio .spillo img { opacity: 0.5; }
+.spillo.entra { animation: spillo-entra 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.spillo.cambia { animation: spillo-cambia 0.5s ease-out; }
+.spillo.esce { animation: spillo-esce 0.25s ease-in both; }
+@keyframes spillo-entra { from { opacity: 0; transform: translateY(-16px) scale(0.4); } }
+@keyframes spillo-cambia { 35% { transform: translateY(-6px) scale(1.15); } }
+@keyframes spillo-esce { to { opacity: 0; transform: scale(0.4); } }
+@media (prefers-reduced-motion: reduce) { .spillo { animation: none !important; transition: none; } }
+
+/* Bolle della mappa da lontano (sintesi.ts): anello colorato e numero dei distributori con notizie;
+   cerchio vuoto per le zone senza notizie. --d è il diametro, deciso in Mappa.tsx. */
+.bolla-tasto { background: none; border: 0; padding: 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.bolla { display: grid; place-items: center; width: var(--d); height: var(--d); border-radius: 50%; box-shadow: 0 3px 10px rgb(16 24 40 / 0.35); transition: scale 0.2s; animation: bolla-entra 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.bolla-numero { display: grid; place-items: center; width: calc(var(--d) - 9px); height: calc(var(--d) - 9px); border-radius: 50%; background: #ffffff; color: #16181d; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.dark .bolla-numero { background: #eef1fc; color: #1d2547; }
+.bolla.vuota { box-shadow: none; border: 1.5px solid rgb(30 41 59 / 0.45); background: rgb(255 255 255 / 0.4); }
+.dark .bolla.vuota { border-color: rgb(214 219 238 / 0.55); background: rgb(214 219 238 / 0.14); }
+.bolla.punto:not(.vuota) { border: 2px solid #ffffff; box-shadow: 0 1px 3px rgb(16 24 40 / 0.4); }
+.bolla-tasto:active .bolla { scale: 0.92; }
+@keyframes bolla-entra { from { opacity: 0; scale: 0.5; } }
+@media (prefers-reduced-motion: reduce) { .bolla { animation: none; transition: none; } }

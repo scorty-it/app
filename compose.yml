@@ -1,0 +1,84 @@
+services:
+  db:
+    image: postgis/postgis:17-3.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Solo localhost: dal tuo PC ci arrivi con un tunnel SSH.
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 12
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    init: true
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      SEGRETO: ${SEGRETO}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      DOMINIO: ${DOMINIO} # per i link assoluti negli avvisi
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:-}
+      TELEGRAM_CANALI: ${TELEGRAM_CANALI:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  caddy:
+    build:
+      context: ./web
+      args:
+        TITOLARE: ${TITOLARE:-} # nome del titolare per la pagina Privacy: dal file .env, non dal codice
+        DOMINIO: ${DOMINIO:-} # per le anteprime dei link e la sitemap
+    restart: unless-stopped
+    environment:
+      DOMINIO: ${DOMINIO}
+      SITI: ${SITI}
+    ports:
+      - "${PORTA_HTTP:-80}:80"
+      - "${PORTA_HTTPS:-443}:443"
+      - "${PORTA_HTTPS:-443}:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+  # Copia giornaliera del database in ./backups: tiene 7 giorni, 4 settimane e 6 mesi.
+  # La cartella deve appartenere all'utente 999 del container: sudo mkdir -p backups && sudo chown 999:999 backups
+  backup:
+    image: prodrigestivill/postgres-backup-local:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SCHEDULE: "0 4 * * *"
+      TZ: Europe/Rome
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+      # Le intenzioni «Ci vado» vivono 24 ore e non si copiano: -Z1 è il valore predefinito dell'immagine, la compressione non cambia.
+      POSTGRES_EXTRA_OPTS: "-Z1 --exclude-table-data=ci_vado"
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
