@@ -49,10 +49,12 @@ git diff <range>
 ```
 
 (Con `--context <dir>` gli stessi tre sono `log.txt`, `stat.txt`,
-`diff.patch`.)
+`diff.patch`. `diff.patch` non contiene i file esclusi, che restano elencati
+in `stat.txt`: sono cambiati ma non si rivedono.)
 
 Esclusi dalla review i glob `exclude:` di `.githooks/security-review-areas`
-(documentazione per le persone, test, immagini del marchio, dati di esempio).
+(documentazione per le persone, test, immagini del marchio, dati di esempio e
+dati generati).
 Se l'intervallo tocca solo quelli, il verdetto è PASS con questo motivo.
 `CLAUDE.md` e i `SKILL.md` NON sono esclusi: istruiscono anche chi fa la
 review.

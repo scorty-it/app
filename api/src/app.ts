@@ -3,7 +3,10 @@ import type { ServerResponse } from 'node:http'
 import Fastify, { type FastifyRequest } from 'fastify'
 import { sql, type QueryExecutorProvider } from 'kysely'
 import { decidiAvviso, rssAvvisi, testoAvviso, type AvvisoSalvato, type TipoAvviso } from './avvisi.ts'
-import { comuniDelBollettino, finitoConfermato, type DistributoreBollettino } from './bollettino.ts'
+import {
+  comuniDelBollettino, finitoConfermato, numeriSpesa, spesaDelBollettino,
+  type BeneNegozio, type DistributoreBollettino, type NegozioBollettino,
+} from './bollettino.ts'
 import { inCache } from './cache.ts'
 import { centrato, cercaComuni, cercaDistributori, cercaLuoghi, comuneNominato, interpreta, normalizza } from './cerca.ts'
 import { nomeProvincia, regioneDi } from './comuni.ts'
@@ -646,8 +649,10 @@ export function costruisciApp({ segreto, passwordAdmin = '', avvisi }: { segreto
     }
   })
 
-  // ponytail: province, bollettino e conteggi del pannello contano solo i distributori; la spesa si aggiunge quando serve a qualcuno.
-  // Situazione per provincia: quanti distributori hanno notizie recenti e di che colore.
+  // ponytail: province, bollettino e fotografie orarie contano anche la spesa; il pannello delle statistiche solo i
+  // distributori, e la spesa si aggiunge lì quando serve a qualcuno.
+  // Situazione per provincia: quanti distributori hanno notizie recenti e di che colore, e in più la spesa: quanti negozi,
+  // quanti con notizie, in quanti comuni manca un bene (solo il conto: i nomi stanno nel bollettino della provincia).
   // ponytail: ricalcolata al massimo una volta al minuto per tutti; per provincia su richiesta se diventa lenta.
   const cacheProvince = inCache<unknown>(60_000)
   app.get('/api/province', async (req, reply) => {
@@ -667,11 +672,27 @@ export function costruisciApp({ segreto, passwordAdmin = '', avvisi }: { segreto
         const c = conteggi.get(r.provincia)
         if (c && colore) c[colore]++
       }
-      return [...conteggi.values()]
+      const negozi = await negoziPerProvincia(null)
+      return [...conteggi.values()].map((c) => {
+        const spesa = spesaDelBollettino(negozi.get(c.provincia) ?? [])
+        return { ...c, spesa: { negozi: spesa.negozi, con_notizie: spesa.con_notizie, comuni_senza: numeriSpesa(spesa).comuni_senza } }
+      })
     })
     reply.header('cache-control', 'public, max-age=60')
     return dati
   })
+
+  // Lo stato dei punti di un tipo, in una provincia o in tutte, che hanno segnalazioni nelle ultime 24 ore.
+  async function statiRecenti(tipo: TipoPunto, sigla: string | null) {
+    const { rows: recenti } = await sql<{ id: number }>`
+      select distinct s.punto_id as id from segnalazioni s join punti p on p.id = s.punto_id
+      where s.visto_il > now() - ${VALIDITA} and not s.nascosta and p.attivo and p.tipo = ${tipo} and p.provincia is not null
+        and (${sigla}::text is null or p.provincia = ${sigla})
+    `.execute(db)
+    return stati(recenti.map((r) => r.id))
+  }
+  const ultimaNotizia = (prodotti: StatoProdotto[]) =>
+    prodotti.reduce<string | null>((u, p) => (!u || Date.parse(p.ultimo) > Date.parse(u) ? p.ultimo : u), null)
 
   // I distributori di una provincia, o di tutte, con colore e conferme: il bollettino e la fotografia oraria contano
   // da qui, così il grafico dell'andamento dice gli stessi numeri del bollettino.
@@ -680,69 +701,94 @@ export function costruisciApp({ segreto, passwordAdmin = '', avvisi }: { segreto
       select id, provincia, comune, ST_Y(geom::geometry) as lat, ST_X(geom::geometry) as lon from punti
       where attivo and tipo = 'distributore' and provincia is not null and (${sigla}::text is null or provincia = ${sigla})
     `.execute(db)
-    const { rows: recenti } = await sql<{ id: number }>`
-      select distinct s.punto_id as id from segnalazioni s join punti p on p.id = s.punto_id
-      where s.visto_il > now() - ${VALIDITA} and not s.nascosta and p.attivo and p.tipo = 'distributore' and p.provincia is not null
-        and (${sigla}::text is null or p.provincia = ${sigla})
-    `.execute(db)
-    const s = await stati(recenti.map((r) => r.id))
+    const s = await statiRecenti('distributore', sigla)
     const distributori = punti.map(({ id, provincia, comune, lat, lon }): DistributoreBollettino & { provincia: string } => {
       const prodotti = s.get(id)?.prodotti ?? []
-      const ultimo = prodotti.reduce<string | null>((u, p) => (!u || Date.parse(p.ultimo) > Date.parse(u) ? p.ultimo : u), null)
-      return { provincia, comune, lat, lon, colore: coloreDi(s.get(id)), confermato: finitoConfermato(prodotti), ultimo }
+      return { provincia, comune, lat, lon, colore: coloreDi(s.get(id)), confermato: finitoConfermato(prodotti), ultimo: ultimaNotizia(prodotti) }
     })
     return Map.groupBy(distributori, (d) => d.provincia)
+  }
+
+  // I negozi di una provincia, o di tutte, con i beni di cui si sa lo stato: gemella di distributoriPerProvincia, e
+  // anche da qui contano pagina, elenco e fotografia oraria. Un bene «incerto» (smentito) non è una notizia.
+  async function negoziPerProvincia(sigla: string | null): Promise<Map<string, NegozioBollettino[]>> {
+    const { rows: punti } = await sql<{ id: number; provincia: string; comune: string | null }>`
+      select id, provincia, comune from punti
+      where attivo and tipo = 'negozio' and provincia is not null and (${sigla}::text is null or provincia = ${sigla})
+    `.execute(db)
+    const s = await statiRecenti('negozio', sigla)
+    const negozi = punti.map(({ id, provincia, comune }): NegozioBollettino & { provincia: string } => {
+      const prodotti = s.get(id)?.prodotti ?? []
+      const beni = prodotti
+        .filter((p) => p.affidabilita !== 'incerto')
+        .map((p): BeneNegozio => ({ bene: p.prodotto, stato: p.stato, confermato: p.stato === 'esaurito' && p.affidabilita === 'affidabile' }))
+      return { provincia, comune, beni, ultimo: ultimaNotizia(prodotti) }
+    })
+    return Map.groupBy(negozi, (n) => n.provincia)
   }
   const contaColori = (distributori: DistributoreBollettino[]) => {
     const conta = (c: 'verde' | 'giallo' | 'rosso') => distributori.filter((d) => d.colore === c).length
     return { verde: conta('verde'), giallo: conta('giallo'), rosso: conta('rosso') }
   }
 
-  // Una provincia per comune, per il bollettino di enti e testate: quali comuni sono senza carburante (bollettino.ts),
-  // e l'andamento delle ultime 24 ore dalle fotografie orarie. Solo conteggi: nessun identificativo, nessuna segnalazione.
+  // Una provincia per comune, per il bollettino di enti e testate: quali comuni sono senza carburante e quali senza un
+  // bene della spesa (bollettino.ts), e l'andamento delle ultime 24 ore dalle fotografie orarie. Il 404 resta legato ai
+  // distributori. Solo conteggi: nessun identificativo, nessuna segnalazione.
   const cacheBollettini = inCache<unknown>(60_000)
   app.get('/api/province/:sigla', {
     schema: { params: { type: 'object', properties: { sigla: { type: 'string', pattern: '^[A-Z]{2}$' } } } },
   }, async (req, reply) => {
     const { sigla } = req.params as { sigla: string }
     const dati = await cacheBollettini(sigla, async () => {
-      const distributori = (await distributoriPerProvincia(sigla)).get(sigla)
+      const [perDistributori, perNegozi] = await Promise.all([distributoriPerProvincia(sigla), negoziPerProvincia(sigla)])
+      const distributori = perDistributori.get(sigla)
       if (!distributori) throw errore(404, 'Provincia non trovata.')
       const { rows: andamento } = await sql`
-        select ora, comuni_senza, comuni_senza_confermati, con_notizie, verde, giallo, rosso from andamento
+        select ora, comuni_senza, comuni_senza_confermati, con_notizie, verde, giallo, rosso, spesa_comuni_senza, spesa_comuni_senza_confermati,
+          spesa_con_notizie
+        from andamento
         where provincia = ${sigla} and ora > now() - interval '24 hours' order by ora
       `.execute(db)
       const media = (v: number[]) => v.reduce((a, x) => a + x, 0) / v.length
       return {
         provincia: sigla, aggiornato_il: new Date().toISOString(), distributori: distributori.length, ...contaColori(distributori),
         lat: media(distributori.map((d) => d.lat)), lon: media(distributori.map((d) => d.lon)),
-        comuni: comuniDelBollettino(distributori), andamento,
+        comuni: comuniDelBollettino(distributori), andamento, spesa: spesaDelBollettino(perNegozi.get(sigla) ?? []),
       }
     })
     reply.header('cache-control', 'public, max-age=60')
     return dati
   })
 
-  // Ogni ora una fotografia dei numeri del bollettino di ogni provincia, per l'andamento (migrazione 009).
+  // Ogni ora una fotografia dei numeri del bollettino di ogni provincia, per l'andamento (migrazioni 009, 012 e 014).
   // Se quella dell'ora c'è già non rifà niente: il server la chiama ogni 5 minuti, così riparte da sola dopo un riavvio.
   async function fotografaProvince() {
     const { rows: [{ fatta }] } = await sql<{ fatta: boolean }>`
       select exists (select 1 from andamento where ora = date_trunc('hour', now())) as fatta
     `.execute(db)
     if (fatta) return 0
-    const righe = [...await distributoriPerProvincia(null)].map(([provincia, distributori]) => {
+    const [perDistributori, perNegozi] = await Promise.all([distributoriPerProvincia(null), negoziPerProvincia(null)])
+    const righe = [...perDistributori].map(([provincia, distributori]) => {
       const colori = contaColori(distributori)
       const senza = comuniDelBollettino(distributori).filter((c) => c.gruppo === 'senza_carburante')
+      const negozi = spesaDelBollettino(perNegozi.get(provincia) ?? [])
+      const spesa = numeriSpesa(negozi)
       return {
         provincia, comuni_senza: senza.length, comuni_senza_confermati: senza.filter((c) => c.confermato).length,
         con_notizie: colori.verde + colori.giallo + colori.rosso, ...colori,
+        spesa_comuni_senza: spesa.comuni_senza, spesa_comuni_senza_confermati: spesa.comuni_senza_confermati, spesa_beni: spesa.beni,
+        // Quanti negozi hanno notizie: con 0 gli zeri della spesa vogliono dire «non si sa», non «va tutto bene».
+        spesa_con_notizie: negozi.con_notizie,
       }
     })
     const esito = await sql`
-      insert into andamento (provincia, ora, comuni_senza, comuni_senza_confermati, con_notizie, verde, giallo, rosso)
-      select x.provincia, date_trunc('hour', now()), x.comuni_senza, x.comuni_senza_confermati, x.con_notizie, x.verde, x.giallo, x.rosso
+      insert into andamento (provincia, ora, comuni_senza, comuni_senza_confermati, con_notizie, verde, giallo, rosso,
+        spesa_comuni_senza, spesa_comuni_senza_confermati, spesa_beni, spesa_con_notizie)
+      select x.provincia, date_trunc('hour', now()), x.comuni_senza, x.comuni_senza_confermati, x.con_notizie, x.verde, x.giallo, x.rosso,
+        x.spesa_comuni_senza, x.spesa_comuni_senza_confermati, x.spesa_beni, x.spesa_con_notizie
       from json_to_recordset(${JSON.stringify(righe)}::json)
-        as x(provincia text, comuni_senza int, comuni_senza_confermati int, con_notizie int, verde int, giallo int, rosso int)
+        as x(provincia text, comuni_senza int, comuni_senza_confermati int, con_notizie int, verde int, giallo int, rosso int,
+          spesa_comuni_senza int, spesa_comuni_senza_confermati int, spesa_beni jsonb, spesa_con_notizie int)
       on conflict do nothing
     `.execute(db)
     const scritte = Number(esito.numAffectedRows ?? 0)
@@ -751,32 +797,37 @@ export function costruisciApp({ segreto, passwordAdmin = '', avvisi }: { segreto
   }
 
   // Dopo la fotografia dell'ora: per ogni provincia, adesso contro l'ultima fotografia tra 6 e 12 ore prima (più vecchia
-  // non dice niente di stamattina) e contro l'ultimo avviso (avvisi.ts). Un avviso nuovo si salva e, se la regione ha il
-  // suo canale, parte su Telegram; se Telegram non risponde resta nel feed e non si ripete.
+  // non dice niente di stamattina) e contro l'ultimo avviso (avvisi.ts). Le voci sono i comuni senza carburante confermati
+  // e, per bene, quelli senza un bene della spesa: un messaggio unico. Un avviso nuovo si salva e, se la regione ha il suo
+  // canale, parte su Telegram; se Telegram non risponde resta nel feed e non si ripete. Con l'avviso si salva anche quanti
+  // negozi avevano notizie adesso (014): senza, la riga della spesa non dice «nessun comune senza beni».
   async function valutaAvvisi() {
+    type Beni = Record<string, number> | null
     const { rows } = await sql<{
-      provincia: string; ora: Date; confermati: number
-      prima: { ora: string; confermati: number } | null
-      ultimo: { tipo: TipoAvviso; ora: string; confermati: number } | null
+      provincia: string; ora: Date; confermati: number; beni: Beni; negozi: number | null
+      prima: { ora: string; confermati: number; beni: Beni } | null
+      ultimo: { tipo: TipoAvviso; ora: string; confermati: number; beni: Beni } | null
     }>`
-      select a.provincia, a.ora, a.comuni_senza_confermati as confermati,
-        (select json_build_object('ora', p.ora, 'confermati', p.comuni_senza_confermati) from andamento p
+      select a.provincia, a.ora, a.comuni_senza_confermati as confermati, a.spesa_beni as beni, a.spesa_con_notizie as negozi,
+        (select json_build_object('ora', p.ora, 'confermati', p.comuni_senza_confermati, 'beni', p.spesa_beni) from andamento p
           where p.provincia = a.provincia and p.ora between a.ora - interval '12 hours' and a.ora - interval '6 hours'
           order by p.ora desc limit 1) as prima,
-        (select json_build_object('tipo', v.tipo, 'ora', v.ora, 'confermati', v.adesso) from avvisi v
+        (select json_build_object('tipo', v.tipo, 'ora', v.ora, 'confermati', v.adesso, 'beni', v.beni) from avvisi v
           where v.provincia = a.provincia order by v.ora desc limit 1) as ultimo
       from andamento a where a.ora = date_trunc('hour', now())
     `.execute(db)
     for (const r of rows) {
       const a = decidiAvviso(
-        { ora: r.ora, confermati: r.confermati },
-        r.prima && { ora: new Date(r.prima.ora), confermati: r.prima.confermati },
-        r.ultimo && { ...r.ultimo, ora: new Date(r.ultimo.ora) },
+        { ora: r.ora, voci: { carburante: r.confermati, beni: r.beni, spesa_con_notizie: r.negozi } },
+        r.prima && { ora: new Date(r.prima.ora), voci: { carburante: r.prima.confermati, beni: r.prima.beni } },
+        r.ultimo && { tipo: r.ultimo.tipo, ora: new Date(r.ultimo.ora), voci: { carburante: r.ultimo.confermati, beni: r.ultimo.beni } },
       )
       if (!a) continue
+      const comeJsonb = (b: Beni) => (b && JSON.stringify(b)) // null resta null (prima della spesa)
       const { rows: [nuovo] } = await sql<{ id: number }>`
-        insert into avvisi (provincia, ora, tipo, adesso, prima, ora_prima)
-        values (${r.provincia}, ${r.ora}, ${a.tipo}, ${a.adesso}, ${a.prima}, ${a.ora_prima})
+        insert into avvisi (provincia, ora, tipo, adesso, prima, ora_prima, beni, beni_prima, spesa_con_notizie)
+        values (${r.provincia}, ${r.ora}, ${a.tipo}, ${a.adesso.carburante}, ${a.prima.carburante}, ${a.ora_prima},
+          ${comeJsonb(a.adesso.beni)}::jsonb, ${comeJsonb(a.prima.beni)}::jsonb, ${a.adesso.spesa_con_notizie ?? null})
         on conflict do nothing returning id
       `.execute(db)
       const nome = nomeProvincia(r.provincia)
@@ -789,18 +840,26 @@ export function costruisciApp({ segreto, passwordAdmin = '', avvisi }: { segreto
   }
 
   // Il feed RSS degli avvisi di una provincia, ultimi 30 giorni: per chi lo collega al suo lettore, a Slack o all'email.
+  // Gli avvisi salvati prima della spesa hanno beni null e si leggono come allora (avvisi.ts); quelli di prima di 014 non
+  // sanno quanti negozi avevano notizie (spesa_con_notizie null) e dicono «nessun comune senza beni» come allora.
   app.get('/api/province/:sigla/avvisi.rss', {
     schema: { params: { type: 'object', properties: { sigla: { type: 'string', pattern: '^[A-Z]{2}$' } } } },
   }, async (req, reply) => {
     const { sigla } = req.params as { sigla: string }
     const nome = nomeProvincia(sigla)
     if (!nome) throw errore(404, 'Provincia non trovata.')
-    const { rows } = await sql<AvvisoSalvato>`
-      select id, provincia, tipo, ora, adesso, prima, ora_prima from avvisi
+    const { rows } = await sql<{
+      id: number; provincia: string; tipo: TipoAvviso; ora: Date; adesso: number; prima: number; ora_prima: Date
+      beni: Record<string, number> | null; beni_prima: Record<string, number> | null; spesa_con_notizie: number | null
+    }>`
+      select id, provincia, tipo, ora, adesso, prima, ora_prima, beni, beni_prima, spesa_con_notizie from avvisi
       where provincia = ${sigla} and ora > now() - interval '30 days' order by ora desc
     `.execute(db)
+    const salvati = rows.map(({ adesso, prima, beni, beni_prima, spesa_con_notizie, ...r }): AvvisoSalvato => ({
+      ...r, adesso: { carburante: adesso, beni, spesa_con_notizie }, prima: { carburante: prima, beni: beni_prima },
+    }))
     reply.header('content-type', 'application/rss+xml; charset=utf-8').header('cache-control', 'public, max-age=300')
-    return rssAvvisi(sigla, nome, avvisi?.origine ?? `${req.protocol}://${req.host}`, rows)
+    return rssAvvisi(sigla, nome, avvisi?.origine ?? `${req.protocol}://${req.host}`, salvati)
   })
 
   // I canali Telegram per la pagina degli avvisi: solo quelli in cui il bot scrive davvero.

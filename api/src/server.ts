@@ -5,11 +5,16 @@ import { migra } from './migra.ts'
 import { aggiornaSeVecchio } from './distributori.ts'
 import { aggiornaNegoziSeVecchio } from './negozi.ts'
 import { pulisci } from './pulizia.ts'
+import { caricaConfini } from './territorio.ts'
 
 const segreto = process.env.SEGRETO ?? ''
 if (segreto.length < 32) throw new Error('SEGRETO mancante o troppo corto (almeno 32 caratteri): vedi .env.example')
 
 await migra(pool)
+// I confini dei comuni (ISTAT) per il comune dei negozi: si ricaricano solo se il file è cambiato. Un errore non ferma
+// l'API: il caricamento è in una transazione, restano i confini e i comuni di prima, e la mappa del carburante non c'entra.
+const confini = await caricaConfini().catch((e) => console.error('caricamento dei confini fallito:', e.message))
+if (confini) console.log(`confini dei comuni caricati: ${confini}`)
 await pulisci()
 // Ogni ora: pulizia dei dati e, se l'ultimo ha più di 20 ore, aggiornamento dei distributori (Ministero, o OpenStreetMap di riserva) e dei negozi (OpenStreetMap).
 const ogniOra = () => {

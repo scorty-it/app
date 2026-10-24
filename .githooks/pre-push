@@ -107,7 +107,15 @@ prepare_context() {
   local base="$1" head="$2" dir="$3" i specs
   if [[ "$base" == "$empty_tree" ]]; then git log --oneline "$head"; else git log --oneline "$base..$head"; fi >"$dir/log.txt"
   git diff --stat "$base" "$head" >"$dir/stat.txt"
-  git diff "$base" "$head" >"$dir/diff.patch"
+  # Senza i file esclusi: un dato generato su una riga sola (MB) renderebbe diff.patch illeggibile
+  # per il revisore e il push si bloccherebbe. stat.txt li elenca comunque, completo.
+  # Senza il file delle aree le esclusioni sono quelle di ripiego (tutti i *.md, quindi anche CLAUDE.md
+  # e i SKILL.md): in quel caso diff.patch resta completo.
+  if [[ -f "$areas_file" ]]; then
+    git diff "$base" "$head" -- . "${not_reviewed[@]}" >"$dir/diff.patch"
+  else
+    git diff "$base" "$head" >"$dir/diff.patch"
+  fi
   : >"$dir/areas.txt"
   for i in "${!area_names[@]}"; do
     read -ra specs <<<"${area_specs[$i]}"

@@ -19,7 +19,8 @@ export const NOME_PRODOTTO: Record<Prodotto, string> = {
   benzina: 'Benzina', gasolio: 'Gasolio', gpl: 'GPL', metano: 'Metano',
   acqua: 'Acqua', latte: 'Latte', pane: 'Pane', frutta_verdura: 'Frutta e verdura', pasta_riso: 'Pasta e riso', carne_pesce: 'Carne e pesce', neonati: 'Neonati',
 }
-export const nomeInFrase = (p: Prodotto) => (p === 'gpl' ? 'GPL' : NOME_PRODOTTO[p].toLowerCase())
+// Nelle frasi («Senza acqua», «Altri negozi con pane»). «Senza neonati» si leggerebbe «senza bambini»: l'etichetta corta resta per i pulsanti.
+export const nomeInFrase = (p: Prodotto) => (p === 'gpl' ? 'GPL' : p === 'neonati' ? 'prodotti per neonati' : NOME_PRODOTTO[p].toLowerCase())
 export const NOME_STATO: Record<Stato, string> = { disponibile: 'Disponibile', scarso: 'Scarso', esaurito: 'Finito' }
 // Per la spesa le stesse tre voci si leggono «C’è», «Poco», «Finito».
 export const NOME_STATO_SPESA: Record<Stato, string> = { disponibile: 'C’è', scarso: 'Poco', esaurito: 'Finito' }

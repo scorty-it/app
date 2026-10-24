@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { comuniDelBollettino, finitoConfermato, type ColoreDistributore, type ComuneBollettino, type DistributoreBollettino } from './bollettino.ts'
+import type { Prodotto, Stato } from './db.ts'
+import {
+  comuniDelBollettino, finitoConfermato, numeriSpesa, spesaDelBollettino,
+  type ColoreDistributore, type ComuneBollettino, type DistributoreBollettino, type NegozioBollettino,
+} from './bollettino.ts'
 
 const d = (comune: string | null, colore: ColoreDistributore, altro: Partial<DistributoreBollettino> = {}): DistributoreBollettino =>
   ({ comune, colore, confermato: false, ultimo: colore ? '2026-10-22T12:00:00.000Z' : null, lat: 40, lon: 15, ...altro })
@@ -51,4 +55,33 @@ test('finito confermato: basta un carburante esaurito e affidabile', () => {
   assert.equal(finitoConfermato([{ stato: 'esaurito', affidabilita: 'affidabile' }, { stato: 'esaurito', affidabilita: 'da_confermare' }]), true)
   assert.equal(finitoConfermato([{ stato: 'esaurito', affidabilita: 'da_confermare' }]), false)
   assert.equal(finitoConfermato([{ stato: 'disponibile', affidabilita: 'affidabile' }]), false)
+})
+
+const n = (comune: string | null, ...beni: [Prodotto, Stato, boolean?][]): NegozioBollettino =>
+  ({ comune, ultimo: null, beni: beni.map(([bene, stato, confermato = false]) => ({ bene, stato, confermato })) })
+
+test('spesa: senza acqua se nessun negozio del comune ce l’ha e almeno uno l’ha finita; chi non ha notizie non lo impedisce', () => {
+  assert.deepEqual(spesaDelBollettino([n('Afragola', ['acqua', 'esaurito']), n('Afragola', ['pane', 'disponibile'])]).beni,
+    [{ bene: 'acqua', comuni: [{ comune: 'Afragola', confermato: false }] }])
+  assert.deepEqual(spesaDelBollettino([n('Afragola', ['acqua', 'esaurito']), n('Afragola', ['acqua', 'scarso'])]).beni, [])
+})
+test('spesa: confermato se almeno un negozio l’ha finita con due persone d’accordo', () => {
+  assert.equal(spesaDelBollettino([n('Casoria', ['pane', 'esaurito', true]), n('Casoria', ['pane', 'esaurito'])]).beni[0].comuni[0].confermato, true)
+})
+test('spesa: i beni nell’ordine di BENI; nei comuni prima i confermati, poi in ordine alfabetico', () => {
+  const s = spesaDelBollettino([n('Pozzuoli', ['pane', 'esaurito']), n('Casoria', ['pane', 'esaurito']), n('Volla', ['pane', 'esaurito', true]), n('Volla', ['acqua', 'esaurito'])])
+  assert.deepEqual(s.beni.map((b) => [b.bene, b.comuni.map((c) => c.comune)]), [['acqua', ['Volla']], ['pane', ['Volla', 'Casoria', 'Pozzuoli']]])
+})
+test('spesa: i negozi senza comune contano nei totali, non tra i comuni', () => {
+  assert.deepEqual(spesaDelBollettino([n(null, ['acqua', 'esaurito']), n('Afragola'), n('Afragola', ['latte', 'disponibile'])]),
+    { negozi: 3, con_notizie: 2, beni: [] })
+})
+test('spesa: i numeri per la fotografia oraria', () => {
+  const s = spesaDelBollettino([n('Volla', ['acqua', 'esaurito', true], ['pane', 'esaurito']), n('Casoria', ['pane', 'esaurito'])])
+  assert.deepEqual(numeriSpesa(s), { comuni_senza: 2, comuni_senza_confermati: 1, beni: { acqua: 1 } })
+})
+test('spesa: lo stesso comune scritto in modi diversi è uno solo, con la grafia più usata', () => {
+  const s = spesaDelBollettino([n('Casoria', ['pane', 'esaurito']), n(' casoria ', ['latte', 'esaurito']), n('Casoria', ['acqua', 'esaurito'])])
+  assert.deepEqual(s.beni.map((b) => b.comuni), Array(3).fill([{ comune: 'Casoria', confermato: false }]))
+  assert.deepEqual(spesaDelBollettino([n('Casoria', ['pane', 'esaurito']), n(' casoria ', ['pane', 'scarso'])]).beni, [])
 })

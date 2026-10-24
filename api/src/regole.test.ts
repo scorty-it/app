@@ -742,7 +742,7 @@ describe('regole anti-abuso', { skip: !attivo && 'serve PGDATABASE che finisca c
     }
   })
 
-  test('le letture distinguono il tipo: il negozio è solo di ?tipo=negozio, le province contano solo i distributori', async () => {
+  test('le letture distinguono il tipo: il negozio è solo di ?tipo=negozio, le province contano i distributori come prima e la spesa a parte', async () => {
     await sql`truncate segnalazioni, voti, code, viste restart identity cascade`.execute(db)
     // Un'app nuova: la sua cache non conosce i test precedenti.
     const lettura = costruisciApp({ segreto: 's'.repeat(32), passwordAdmin: ADMIN })
@@ -775,11 +775,14 @@ describe('regole anti-abuso', { skip: !attivo && 'serve PGDATABASE che finisca c
       assert.equal(negozi.punti[0][3], 0b1111111 << 4) // i sette beni, dopo i quattro carburanti
       assert.deepEqual(negozi.stati.map((s) => [s.punto_id, s.tipo]), [[negozio, 'negozio']])
 
-      // Province e bollettino: la segnalazione del negozio non sposta nulla.
-      const province = (await lettura.inject({ url: '/api/province' })).json() as { provincia: string; distributori: number; verde: number; giallo: number; rosso: number }[]
+      // Province e bollettino: la segnalazione del negozio non sposta i distributori né i colori; la spesa è a parte.
+      type Provincia = { provincia: string; distributori: number; verde: number; giallo: number; rosso: number; spesa: { negozi: number; con_notizie: number; comuni_senza: number } }
+      const province = (await lettura.inject({ url: '/api/province' })).json() as Provincia[]
       assert.deepEqual(province.filter((p) => p.provincia === 'NA').map((p) => [p.distributori, p.verde, p.giallo, p.rosso]), [[1, 0, 0, 0]])
-      const bollettino = (await lettura.inject({ url: '/api/province/NA' })).json() as { distributori: number; rosso: number }
-      assert.deepEqual([bollettino.distributori, bollettino.rosso], [1, 0])
+      // Un negozio con una notizia, ma senza comune: conta nei totali, non tra i comuni senza.
+      assert.deepEqual(province.find((p) => p.provincia === 'NA')?.spesa, { negozi: 1, con_notizie: 1, comuni_senza: 0 })
+      const bollettino = (await lettura.inject({ url: '/api/province/NA' })).json() as { distributori: number; rosso: number; spesa: { negozi: number } }
+      assert.deepEqual([bollettino.distributori, bollettino.rosso, bollettino.spesa.negozi], [1, 0, 1])
 
       // Pannello: i distributori sono solo i distributori. Esportazione: la riga dice di che tipo è.
       const riepilogo = (await lettura.inject({ url: '/api/admin/riepilogo', headers: { authorization: `Bearer ${ADMIN}` } })).json()
@@ -791,6 +794,54 @@ describe('regole anti-abuso', { skip: !attivo && 'serve PGDATABASE che finisca c
       await sql`truncate segnalazioni restart identity cascade`.execute(db)
       await sql`delete from punti where fonte = 'test-tipo'`.execute(db)
       await sql`update punti set provincia = null where id = ${napoli}`.execute(db)
+    }
+  })
+
+  test('il bollettino della provincia porta la spesa e tiene i campi di prima', async () => {
+    await sql`truncate segnalazioni, voti, code, viste restart identity cascade`.execute(db)
+    const lettura = costruisciApp({ segreto: 's'.repeat(32), passwordAdmin: ADMIN })
+    lettura.log.level = 'silent'
+    try {
+      // Napoli ha un distributore (senza notizie), un negozio con l'acqua finita per due telefoni e un secondo negozio
+      // dove il pane è contestato (uno dice finito, l'altro disponibile): «incerto», quindi nessuna notizia.
+      await sql`update punti set provincia = 'NA', comune = 'Napoli' where id = ${napoli}`.execute(db)
+      const { rows: [{ id: negozio }] } = await sql<{ id: number }>`
+        insert into punti (nome, tipo, comune, provincia, geom, prodotti, fonte, id_fonte)
+        values ('Spesa Napoli', 'negozio', 'Napoli', 'NA', ST_MakePoint(${NAPOLI.lon}, ${vicino(NAPOLI, 100).lat})::geography, '{acqua,pane}', 'test-spesa-prov', 'spesa-napoli') returning id`.execute(db)
+      for (let i = 0; i < 2; i++) {
+        const { rows: [{ id: telefono }] } = await sql<{ id: string }>`insert into dispositivi default values returning id`.execute(db)
+        await sql`insert into segnalazioni (punto_id, prodotto, stato, dispositivo_id) values (${negozio}, 'acqua', 'esaurito', ${telefono})`.execute(db)
+      }
+      const { rows: [{ id: contestato }] } = await sql<{ id: number }>`
+        insert into punti (nome, tipo, comune, provincia, geom, prodotti, fonte, id_fonte)
+        values ('Spesa Napoli 2', 'negozio', 'Napoli', 'NA', ST_MakePoint(${NAPOLI.lon}, ${vicino(NAPOLI, 200).lat})::geography, '{acqua,pane}', 'test-spesa-prov', 'spesa-napoli-2') returning id`.execute(db)
+      for (const [stato, ore] of [['disponibile', 1], ['esaurito', 0]]) { // il finito è più recente: vincerebbe da solo
+        const { rows: [{ id: telefono }] } = await sql<{ id: string }>`insert into dispositivi default values returning id`.execute(db)
+        await sql`insert into segnalazioni (punto_id, prodotto, stato, dispositivo_id, visto_il)
+          values (${contestato}, 'pane', ${stato}, ${telefono}, now() - make_interval(hours => ${ore}))`.execute(db)
+      }
+
+      const r = await lettura.inject({ url: '/api/province/NA' })
+      assert.equal(r.statusCode, 200)
+      const b = r.json()
+      // I campi di prima restano, con lo stesso significato; si aggiunge soltanto la spesa.
+      for (const campo of ['provincia', 'aggiornato_il', 'distributori', 'verde', 'giallo', 'rosso', 'lat', 'lon', 'comuni', 'andamento', 'spesa']) {
+        assert.ok(campo in b, `manca il campo ${campo}`)
+      }
+      assert.deepEqual([b.provincia, b.distributori, b.verde, b.giallo, b.rosso], ['NA', 1, 0, 0, 0]) // il negozio non è un distributore
+      assert.deepEqual(b.comuni.map((c: { comune: string; gruppo: string }) => [c.comune, c.gruppo]), [['Napoli', 'senza_notizie']])
+      assert.deepEqual(b.spesa.beni[0], { bene: 'acqua', comuni: [{ comune: 'Napoli', confermato: true }] })
+      assert.deepEqual([b.spesa.negozi, b.spesa.con_notizie, b.spesa.beni.length], [2, 1, 1]) // il pane contestato non fa «senza pane»
+      assert.doesNotMatch(r.body, /[0-9a-f]{8}-[0-9a-f]{4}-/) // nessun identificativo di telefono
+
+      // L'elenco porta lo stesso conto dei comuni senza, senza i nomi.
+      const province = (await lettura.inject({ url: '/api/province' })).json() as { provincia: string; spesa: object }[]
+      assert.deepEqual(province.find((p) => p.provincia === 'NA')?.spesa, { negozi: 2, con_notizie: 1, comuni_senza: 1 })
+    } finally {
+      await lettura.close()
+      await sql`truncate segnalazioni restart identity cascade`.execute(db)
+      await sql`delete from punti where fonte = 'test-spesa-prov'`.execute(db)
+      await sql`update punti set provincia = null, comune = null where id = ${napoli}`.execute(db)
     }
   })
 

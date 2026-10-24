@@ -5,9 +5,9 @@
   </picture>
 </p>
 
-<p align="center"><strong>Mappa civica delle scorte di carburante</strong><br>
-Dove c’è benzina, gasolio, GPL e metano durante scioperi e crisi di approvvigionamento,<br>
-dalle segnalazioni di chi è sul posto.</p>
+<p align="center"><strong>Mappa civica delle scorte di carburante e della spesa</strong><br>
+Dove c’è benzina, gasolio, GPL e metano, e dove si trovano acqua, pane, latte e gli altri beni essenziali,<br>
+durante scioperi e crisi di approvvigionamento, dalle segnalazioni di chi è sul posto.</p>
 
 ---
 
@@ -33,7 +33,7 @@ Scorty è un progetto civico, indipendente e senza scopo di lucro. È una web ap
 - **Sul posto o a distanza.** Sul posto vuol dire entro 300 metri. Chi ci è passato da poco (per esempio guidando) può segnalare dopo, fino a 30 km di distanza e indicando quando l’ha visto. Una segnalazione a distanza conta la metà, e conferme e code valgono solo sul posto.
 - **Lo stato si calcola, non si sceglie.** Contano le ultime 24 ore, perché uno sciopero dura giorni, ma le segnalazioni recenti pesano di più: il peso si dimezza ogni 3 ore. Per ogni telefono conta solo l’ultima. Con una sola persona lo stato è *da confermare*; con almeno due d’accordo nelle ultime 4 ore è *affidabile*. Se le persone non sono d’accordo lo stato è *incerto*.
 - **Tempo reale.** Quando qualcuno segnala, chi guarda la mappa vede il cambiamento subito.
-- **Bollettino per provincia.** Per comuni, prefetture e testate locali: `scorty.it/province/SA` mostra in cima i comuni senza carburante, cioè quelli dove nessun distributore risulta avere carburante e almeno uno risulta finito. Basta una segnalazione, ma finché due persone non sono d’accordo il comune resta «da confermare». Da lì si condivide il bollettino come immagine (per WhatsApp e i social), come PDF A4 o come testo, sempre con la data e l’ora dei dati. Gli stessi numeri sono in JSON su `/api/province/SA`, con l’andamento delle ultime 24 ore. Con «Incorpora nel tuo sito» una testata o un ente mette nelle sue pagine il riepilogo della provincia (`scorty.it/widget/province/SA`, dentro un iframe), che si aggiorna da solo. Quando in una provincia aumentano i comuni senza carburante confermati (almeno due persone d’accordo), parte un avviso nel canale Telegram della regione e nel feed RSS della provincia (`/api/province/SA/avvisi.rss`), e un altro quando torna a migliorare: al massimo uno ogni 6 ore per provincia, elenco su `scorty.it/avvisi`. Per Telegram servono un bot e i canali nel `.env` (`TELEGRAM_TOKEN`, `TELEGRAM_CANALI`, vedi `.env.example`).
+- **Bollettino per provincia.** Per comuni, prefetture e testate locali: `scorty.it/province/SA` mostra in cima i comuni senza carburante, cioè quelli dove nessun distributore risulta avere carburante e almeno uno risulta finito, e poi, bene per bene, i comuni senza un bene della spesa (acqua, pane, latte…): quelli dove in nessun negozio il bene c’è (né «C’è» né «Poco») e in almeno uno è finito. Basta una segnalazione, ma finché due persone non sono d’accordo il comune resta «da confermare». Da lì si condivide il bollettino come immagine (per WhatsApp e i social), come PDF A4 o come testo, sempre con la data e l’ora dei dati. Gli stessi numeri sono in JSON su `/api/province/SA` (la spesa nel campo `spesa`), con l’andamento delle ultime 24 ore, e nell’elenco `/api/province`. Con «Incorpora nel tuo sito» una testata o un ente mette nelle sue pagine il riepilogo della provincia (`scorty.it/widget/province/SA`, dentro un iframe), che si aggiorna da solo. Pagina, bollettino (immagine, PDF e testo), grafico, widget, JSON e avvisi contano anche i comuni senza un bene della spesa, con la stessa regola dei distributori. Quando in una provincia, rispetto a 6–12 ore prima, aumentano i comuni confermati (almeno due persone d’accordo) senza carburante o senza un bene della spesa, bene per bene, parte un avviso nel canale Telegram della regione e nel feed RSS della provincia (`/api/province/SA/avvisi.rss`). Il messaggio è uno solo e dice com’è la provincia per carburante e spesa. Un altro arriva quando tutti i numeri dell’ultimo avviso, del carburante e di ogni bene della spesa, sono tornati a zero o almeno alla metà e nessuno è salito. Al massimo un avviso ogni 6 ore per provincia, elenco su `scorty.it/avvisi`. Per Telegram servono un bot e i canali nel `.env` (`TELEGRAM_TOKEN`, `TELEGRAM_CANALI`, vedi `.env.example`).
 - **Si può correggere.** Per un’ora dopo la visita, da «Le tue segnalazioni» si aggiunge un carburante dimenticato o la coda, si cambia uno stato sbagliato o si annulla tutto, anche lontano dal distributore. Una correzione non trascina i voti degli altri e non li cancella: la vecchia segnalazione si ritira, se ne crea una nuova, e chi aveva confermato o smentito la vecchia continua a contare per quello che aveva detto.
 - **Avviso al distributore.** Con Scorty aperto, chi è fermo da un minuto vicino a un distributore riceve un invito a dire com’è. Lo stesso vale per il negozio dove hai detto «Ci vado»: l’invito apre la scheda su «Com’è lo scaffale?». Un negozio qualunque sotto casa non fa scattare niente. Il calcolo avviene sul telefono: al server arriva solo una posizione approssimata. Con l’app chiusa non funziona, perché i browser non danno la posizione alle app in secondo piano.
 - **Si installa sul telefono.** Su Android con un pulsante; su iPhone Scorty spiega come aggiungerla alla schermata Home da Safari.
@@ -159,12 +159,11 @@ bash scripts/test/caddy_log_test.sh
 
 - [ ] **App per iPhone e Android.** Servirebbero per Android Auto e CarPlay, che per CarPlay richiede un permesso di Apple, e per l’avviso al distributore anche ad app chiusa.
 - [ ] **Altri negozi.** Panifici, macellerie, farmacie e simili: per ora la Spesa copre i supermercati.
-- [ ] **Spesa nella situazione per provincia.** La pagina e il bollettino per provincia parlano ancora solo di carburante.
 - [x] Prezzi del Ministero nella scheda, self e servito, con avviso se non sono aggiornati da oltre 30 giorni
 - [x] Titolare del trattamento indicato e [registro dei trattamenti](docs/registro-trattamenti.md)
 - [x] Distributori del Ministero aggiornati ogni giorno, tramite l’Osservatorio prezzi carburanti, con OpenStreetMap come riserva
 - [x] Pagina «Situazione per provincia»
-- [x] Bollettino per provincia: comuni senza carburante, immagine, PDF e testo
+- [x] Bollettino per provincia: comuni senza carburante o senza un bene della spesa, immagine, PDF e testo
 - [x] Ricerca di comuni, indirizzi, luoghi e distributori, tollerante agli errori
 - [x] Correggere e completare le proprie segnalazioni per un’ora
 - [x] Avviso al distributore con l’app aperta, e invito a installarla sul telefono
@@ -190,6 +189,7 @@ Segnalazioni di problemi, idee e pull request sono benvenute. Leggi la [guida pe
   - se il Ministero non risponde: dati © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), con licenza [ODbL](https://opendatacommons.org/licenses/odbl/), tramite Overpass;
   - il file `api/db/demo-distributori.json` è una copia di riserva da OpenStreetMap.
 - **Nomi dei comuni:** elenco dei comuni e variazioni amministrative dell’[ISTAT](https://www.istat.it/classificazione/codici-dei-comuni-delle-province-e-delle-regioni/), con licenza [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.it), nel file `api/db/comuni-istat.json`. Servono a scrivere il comune di ogni distributore con il nome ufficiale di oggi, anche quando la fonte usa quello di un comune poi fuso.
+- **Confini dei comuni:** [limiti amministrativi generalizzati](https://www.istat.it/notizia/confini-delle-unita-amministrative-a-fini-statistici-al-1-gennaio-2018-2/) dell’ISTAT al 1° gennaio 2025, con licenza [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.it), nel file `api/db/confini-comuni.json` (si rigenera da `api/` con `node src/confini.ts`). Servono a mettere i negozi nel comune giusto.
 - **Ricerca di indirizzi e luoghi:** [Photon](https://photon.komoot.io) di komoot, su dati © OpenStreetMap contributors.
 - **Carattere:** [Figtree](https://github.com/erikdkennedy/figtree), con licenza SIL Open Font License.
 

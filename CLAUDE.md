@@ -1,6 +1,6 @@
 # Scorty: istruzioni per chi sviluppa (anche con Claude Code)
 
-Mappa civica delle scorte di carburante: web app (PWA) con segnalazioni anonime. Online su https://scorty.it, codice su https://github.com/scorty-it/app (AGPL-3.0). Il README spiega il progetto, CONTRIBUTING.md come partecipare; qui le regole di lavoro.
+Mappa civica delle scorte di carburante e della spesa: web app (PWA) con segnalazioni anonime. Online su https://scorty.it, codice su https://github.com/scorty-it/app (AGPL-3.0). Il README spiega il progetto, CONTRIBUTING.md come partecipare; qui le regole di lavoro.
 
 ## Lingua e stile
 - Interfaccia, nomi nel codice, commenti, messaggi di commit e documentazione: **in italiano**.

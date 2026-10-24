@@ -20,6 +20,10 @@ if [[ -n "$ctx" && -d "$ctx" ]]; then
   echo "ctx: $(cd "$ctx" && ls | tr '\n' ' ')" >>"$FAKE_CALLS"
   [[ -s "$ctx/client.patch" && ! -s "$ctx/rules.patch" ]] && echo "areas-ok" >>"$FAKE_CALLS"
   grep -qx "client: lib" "$ctx/areas.txt" && echo "areas-listed" >>"$FAKE_CALLS"
+  grep -q '^diff --git a/lib/a.dart ' "$ctx/diff.patch" && echo "diff-has-code" >>"$FAKE_CALLS"
+  grep -q 'data/generato.json' "$ctx/diff.patch" && echo "diff-has-excluded" >>"$FAKE_CALLS"
+  grep -q 'data/generato.json' "$ctx/stat.txt" && echo "stat-has-excluded" >>"$FAKE_CALLS"
+  grep -q '^diff --git a/CLAUDE.md ' "$ctx/diff.patch" && echo "diff-has-claude-md" >>"$FAKE_CALLS"
 fi
 printf '%b\n' "${FAKE_OUTPUT:-}"
 exit "${FAKE_EXIT:-0}"
@@ -31,12 +35,12 @@ git init -q -b main "$repo"
 cd "$repo"
 git config user.email t@example.com
 git config user.name t
-mkdir -p lib docs test .githooks
+mkdir -p lib docs test data .githooks
 cat >.githooks/security-review-areas <<'AREAS'
 # Aree della review: <area>: <pathspec>...; exclude: <glob>...
 rules: firestore.rules
 client: lib
-exclude: **/*.md docs/** test/**
+exclude: **/*.md docs/** test/** data/generato.json
 AREAS
 echo a >lib/a.dart && git add . && git commit -qm base
 base_sha="$(git rev-parse HEAD)"
@@ -134,6 +138,28 @@ orphan="$(git commit-tree "$code2^{tree}" -m orfano)"
 run_hook "refs/heads/nuovo $orphan refs/heads/main $zero" FAKE_OUTPUT='SECURITY-REVIEW: PASS'
 check "unrelated history: whole content reviewed" '[[ $status -eq 0 ]] && grep -q "^/security-review-range $empty_tree..$orphan --context " "$FAKE_CALLS"'
 check "unrelated history: context prepared" 'grep -q "^ctx: .*diff.patch.*log.txt.*stat.txt" "$FAKE_CALLS" && grep -qx "areas-ok" "$FAKE_CALLS"'
+
+# Un file escluso e molto grande (dati generati su una riga) non deve finire in diff.patch: il revisore
+# non riuscirebbe a leggerlo e il push si bloccherebbe. Resta in stat.txt, così si sa che è cambiato.
+prima_dati="$(git rev-parse HEAD)"
+echo g >lib/a.dart && echo '{"dati":"generati"}' >data/generato.json
+git add . && git commit -qm "codice-e-dati-generati"
+codice_e_dati="$(git rev-parse HEAD)"
+run_hook "refs/heads/feature $codice_e_dati refs/heads/feature $prima_dati" FAKE_OUTPUT='SECURITY-REVIEW: PASS'
+check "diff.patch: the code is in" '[[ $status -eq 0 ]] && grep -qx "diff-has-code" "$FAKE_CALLS"'
+check "diff.patch: the excluded file is left out" '! grep -qx "diff-has-excluded" "$FAKE_CALLS"'
+check "stat.txt: the excluded file is still listed" 'grep -qx "stat-has-excluded" "$FAKE_CALLS"'
+
+# Senza il file delle aree (cancellato o rinominato) le esclusioni sono quelle di ripiego, che tolgono tutti i
+# *.md: CLAUDE.md e i SKILL.md però istruiscono anche chi fa la review e devono restare in diff.patch.
+prima_claude="$(git rev-parse HEAD)"
+echo h >lib/a.dart && echo istruzioni >CLAUDE.md
+git add . && git commit -qm "codice-e-claude-md"
+codice_e_claude="$(git rev-parse HEAD)"
+mv .githooks/security-review-areas "$work/areas.bak"
+run_hook "refs/heads/feature $codice_e_claude refs/heads/feature $prima_claude" FAKE_OUTPUT='SECURITY-REVIEW: PASS'
+mv "$work/areas.bak" .githooks/security-review-areas
+check "no areas file: CLAUDE.md stays in diff.patch" '[[ $status -eq 0 ]] && grep -qx "diff-has-code" "$FAKE_CALLS" && grep -qx "diff-has-claude-md" "$FAKE_CALLS"'
 
 # Lockfile: npm ci scarica da qualsiasi "resolved", quindi si controlla in modo deterministico prima della review.
 ln -s "$(command -v node)" "$fakebin/node"

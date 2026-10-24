@@ -12,9 +12,10 @@ export function PaginaAvvisi() {
   return (
     <Pagina titolo="Avvisi per enti e redazioni">
       <p>
-        Quando in una provincia aumentano i comuni senza carburante confermati, cioè con almeno due persone d’accordo, Scorty scrive un
-        avviso nel canale Telegram della regione e nel feed RSS della provincia. Un altro messaggio arriva quando la situazione torna a
-        migliorare. Al massimo un avviso ogni 6 ore per provincia; di notte, dalle 23 alle 7, i messaggi arrivano senza suono.
+        Quando in una provincia aumentano i comuni senza carburante o senza un bene della spesa (acqua, pane, latte…) confermati, cioè con
+        almeno due persone d’accordo, Scorty scrive un avviso nel canale Telegram della regione e nel feed RSS della provincia. Ogni
+        avviso dice com’è la provincia per tutti e due. Un altro messaggio arriva quando la situazione torna a migliorare. Al massimo un
+        avviso ogni 6 ore per provincia; di notte, dalle 23 alle 7, i messaggi arrivano senza suono.
       </p>
 
       <h2>Canali Telegram</h2>

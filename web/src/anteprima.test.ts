@@ -1,15 +1,23 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { robots, sitemap, testa, titoloProvincia } from './anteprima.ts'
+import { descrizioneProvincia, robots, sitemap, testa, titoloProvincia } from './anteprima.ts'
 
 const SITO = 'https://scorty.it'
 
 test('la testa di una provincia ha il suo indirizzo canonico e l’anteprima con indirizzi assoluti', () => {
   const h = testa({ titolo: titoloProvincia('Salerno'), descrizione: 'x', sito: SITO, percorso: '/province/SA' })
-  assert.match(h, /<title>Carburante in provincia di Salerno, oggi – Scorty<\/title>/)
+  assert.match(h, /<title>Carburante e spesa in provincia di Salerno, oggi – Scorty<\/title>/)
   assert.match(h, /<link rel="canonical" href="https:\/\/scorty\.it\/province\/SA" \/>/)
   assert.match(h, /<meta property="og:url" content="https:\/\/scorty\.it\/province\/SA" \/>/)
   assert.match(h, /<meta property="og:image" content="https:\/\/scorty\.it\/anteprima\.png" \/>/)
+})
+
+test('titolo e descrizione di una provincia parlano di carburante e di spesa', () => {
+  assert.equal(titoloProvincia('Salerno'), 'Carburante e spesa in provincia di Salerno, oggi – Scorty')
+  assert.equal(
+    descrizioneProvincia('Salerno'),
+    'I comuni senza carburante o senza beni essenziali in provincia di Salerno, dalle segnalazioni di chi è sul posto. Con il bollettino da condividere.',
+  )
 })
 
 test('la testa generica non ha canonical: index.html risponde anche alle altre pagine', () => {

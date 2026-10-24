@@ -5,6 +5,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { TITOLO_SITO } from './anteprima.ts'
 import { quando } from './aspetto.ts'
+import { rigaSpesaProvincia } from './bollettino.ts'
 import { DONAZIONI_URL, EMAIL_CONTATTI, REPO_URL, TITOLARE } from './config.ts'
 import { caricaProvince, type Provincia } from './dati.ts'
 import { Indicatore } from './Marchio.tsx'
@@ -180,6 +181,13 @@ export function FontiDati() {
         Supermercati e negozi di alimentari da <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> (© OpenStreetMap
         contributors, licenza ODbL).
       </p>
+      <h2>Comuni e confini</h2>
+      <p>
+        I nomi ufficiali dei comuni e i confini dei comuni vengono dall’
+        <a href="https://www.istat.it/classificazione/codici-dei-comuni-delle-province-e-delle-regioni/">ISTAT</a> (licenza{' '}
+        <a href="https://creativecommons.org/licenses/by/4.0/deed.it">CC BY 4.0</a>). Servono a dare il comune ai distributori e ai negozi,
+        e così a dire quali comuni sono senza carburante o senza un bene della spesa.
+      </p>
       <h2>Prezzi</h2>
       <p>
         I prezzi sono quelli che i gestori comunicano al Ministero, letti ogni giorno dall’
@@ -295,7 +303,7 @@ export function Privacy() {
         <li>I «Ci vado» si cancellano dopo 24 ore e non entrano nelle copie di sicurezza.</li>
         <li>Le richieste di correzione, con l’eventuale contatto, si cancellano 90 giorni dopo la chiusura.</li>
         <li>
-          L’andamento delle province, cioè quanti comuni e distributori sono senza carburante ora per ora, è fatto di soli numeri,
+          L’andamento delle province, cioè quanti comuni sono senza carburante o senza beni della spesa, quanti distributori hanno ciascun colore e quanti negozi hanno notizie, ora per ora, è fatto di soli numeri,
           senza dati delle persone: si tiene un anno. Lo stesso vale per gli avvisi a enti e redazioni nei canali Telegram e nei feed
           RSS: Scorty non sa chi li segue, e su Telegram valgono le regole di Telegram.
         </li>
@@ -413,7 +421,7 @@ export function Province() {
     <Pagina titolo="Situazione per provincia">
       <p className="text-sm text-muted-foreground">
         Distributori con segnalazioni nelle ultime 24 ore. Più la lancetta va verso il verde, più distributori hanno carburante. Tocca una
-        provincia per vedere i comuni senza carburante e condividere il bollettino.
+        provincia per vedere i comuni senza carburante e senza beni della spesa, e condividere il bollettino.
       </p>
       {errore && <p>Non riesco a caricare i dati. Riprova tra poco.</p>}
       {!dati && !errore && <p className="text-muted-foreground">Caricamento…</p>}
@@ -425,6 +433,7 @@ export function Province() {
               {Object.entries(province).map(([sigla, nome]) => {
                 const p = dati.get(sigla)
                 const conDati = p ? p.verde + p.giallo + p.rosso : 0
+                const spesa = p && rigaSpesaProvincia(p)
                 const contenuto = (
                   <>
                     <Indicatore valore={conDati ? (p!.verde + p!.giallo / 2) / conDati : null} className="h-9 w-11 shrink-0 text-foreground" />
@@ -444,6 +453,7 @@ export function Province() {
                       <span className="block text-[13px] text-muted-foreground">
                         {p ? `${conDati} su ${p.distributori} con notizie recenti` : 'nessun distributore'}
                       </span>
+                      {spesa && <span className="block text-[13px] text-muted-foreground">{spesa}</span>}
                     </span>
                     {p && <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
                   </>

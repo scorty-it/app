@@ -2,13 +2,15 @@
 // WhatsApp, Facebook e Telegram non eseguono JavaScript: dell'app vedono solo questo. Per la stessa
 // ragione ogni provincia ha la sua pagina statica, con il suo titolo, servita da Caddy a /province/XX.
 
+// Il titolo resta sul carburante: è quello che si cerca durante la crisi di ottobre 2026.
+// ponytail: con una crisi della spesa (o quando le ricerche lo dicono) va riscritto per tutti e due.
 export const TITOLO_SITO = 'Scorty – dove c’è benzina e gasolio adesso'
 export const DESCRIZIONE_SITO =
-  'La mappa dei distributori con carburante durante scioperi e crisi: benzina, gasolio, GPL e metano, segnalati da chi è sul posto. Gratis, senza account.'
+  'Dove c’è benzina, gasolio, GPL e metano e dove si trovano acqua, pane e latte durante scioperi e crisi. Lo segnala chi è sul posto, gratis e senza account.'
 
-export const titoloProvincia = (nome: string) => `Carburante in provincia di ${nome}, oggi – Scorty`
+export const titoloProvincia = (nome: string) => `Carburante e spesa in provincia di ${nome}, oggi – Scorty`
 export const descrizioneProvincia = (nome: string) =>
-  `I comuni senza carburante e i distributori con benzina, gasolio, GPL e metano in provincia di ${nome}, dalle segnalazioni di chi è sul posto. Con il bollettino da condividere.`
+  `I comuni senza carburante o senza beni essenziali in provincia di ${nome}, dalle segnalazioni di chi è sul posto. Con il bollettino da condividere.`
 
 const testo = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 

@@ -31,7 +31,7 @@ export function Incorpora({ sigla, nome, aperto, onChiudi }: { sigla: string; no
             </DrawerDescription>
           </div>
           {aperto && (
-            <iframe src={`/widget/province/${sigla}`} title={`Anteprima: carburante in provincia di ${nome}`} height={480} className="w-full max-w-[640px] shrink-0" />
+            <iframe src={`/widget/province/${sigla}`} title={`Anteprima: carburante e spesa in provincia di ${nome}`} height={480} className="w-full max-w-[640px] shrink-0" />
           )}
           {FORMATI.map(([formato, titolo]) => {
             const codice = codiceIframe(location.origin, sigla, nome, formato)

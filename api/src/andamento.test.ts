@@ -80,7 +80,14 @@ describe('andamento per provincia', { skip: !attivo && 'serve PGDATABASE che fin
     const { andamento } = (await altra.inject({ url: '/api/province/SA' })).json()
     await altra.close()
     assert.deepEqual(andamento.map((a: { comuni_senza: number }) => a.comuni_senza), [4, 1])
-    assert.deepEqual(Object.keys(andamento[0]).sort(), ['comuni_senza', 'comuni_senza_confermati', 'con_notizie', 'giallo', 'ora', 'rosso', 'verde'])
+    assert.deepEqual(Object.keys(andamento[0]).sort(), [
+      'comuni_senza', 'comuni_senza_confermati', 'con_notizie', 'giallo', 'ora', 'rosso', 'spesa_comuni_senza', 'spesa_comuni_senza_confermati',
+      'spesa_con_notizie', 'verde',
+    ])
+    // Una fotografia di prima della spesa non dice «zero», dice che non lo sapeva; quella di quest'ora (test sopra) lo sa.
+    assert.deepEqual(andamento.map((a: { spesa_comuni_senza: number | null }) => a.spesa_comuni_senza), [null, 0])
+    // Lo stesso per quanti negozi avevano notizie: null prima di quel dato; zero (nessun negozio a Salerno) per quella di quest'ora.
+    assert.deepEqual(andamento.map((a: { spesa_con_notizie: number | null }) => a.spesa_con_notizie), [null, 0])
     assert.equal(Date.parse(andamento[1].ora) - Date.parse(andamento[0].ora), 3 * 60 * 60 * 1000)
   })
 
@@ -92,5 +99,41 @@ describe('andamento per provincia', { skip: !attivo && 'serve PGDATABASE che fin
     await pulisci()
     const { rows } = await sql<{ comuni_senza: number }>`select comuni_senza from andamento where ora < now() - interval '300 days'`.execute(db)
     assert.deepEqual(rows.map((r) => r.comuni_senza), [2])
+  })
+
+  test('la fotografia dell’ora salva anche i numeri della spesa', async () => {
+    // Un negozio a Salerno con l'acqua finita per due telefoni: un comune senza acqua, confermato. A Napoli niente negozi.
+    await sql`delete from andamento`.execute(db)
+    const { rows: [{ id: negozio }] } = await sql<{ id: number }>`
+      insert into punti (nome, tipo, geom, prodotti, fonte, id_fonte, comune, provincia)
+      values ('Spesa Salerno', 'negozio', ST_MakePoint(${SALERNO.lon}, ${SALERNO.lat})::geography, '{acqua,pane}', 'test-spesa', 'spesa-salerno', 'Salerno', 'SA')
+      returning id`.execute(db)
+    try {
+      for (let i = 0; i < 2; i++) {
+        const { rows: [{ id: telefono }] } = await sql<{ id: string }>`insert into dispositivi default values returning id`.execute(db)
+        await sql`insert into segnalazioni (punto_id, prodotto, stato, dispositivo_id) values (${negozio}, 'acqua', 'esaurito', ${telefono})`.execute(db)
+      }
+      assert.equal(await app.fotografaProvince(), 2)
+      const { rows } = await sql`
+        select provincia, spesa_comuni_senza, spesa_comuni_senza_confermati, spesa_beni, spesa_con_notizie from andamento order by provincia
+      `.execute(db)
+      assert.deepEqual(rows, [
+        // Niente negozi: zeri veri, non null; e zero negozi con notizie, che è la differenza tra «va tutto bene» e «non si sa».
+        { provincia: 'NA', spesa_comuni_senza: 0, spesa_comuni_senza_confermati: 0, spesa_beni: {}, spesa_con_notizie: 0 },
+        { provincia: 'SA', spesa_comuni_senza: 1, spesa_comuni_senza_confermati: 1, spesa_beni: { acqua: 1 }, spesa_con_notizie: 1 },
+      ])
+
+      // Il bollettino dice gli stessi numeri della fotografia (e, per l'ora in corso, li ha già salvati).
+      const altra = nuovaApp() // cache vuota
+      const b = (await altra.inject({ url: '/api/province/SA' })).json()
+      await altra.close()
+      assert.deepEqual(b.spesa.beni, [{ bene: 'acqua', comuni: [{ comune: 'Salerno', confermato: true }] }])
+      const ultima = b.andamento.at(-1)
+      assert.deepEqual([ultima.spesa_comuni_senza, ultima.spesa_comuni_senza_confermati, ultima.spesa_con_notizie], [1, 1, 1])
+    } finally {
+      await sql`delete from andamento`.execute(db)
+      await sql`delete from segnalazioni where punto_id = ${negozio}`.execute(db)
+      await sql`delete from punti where id = ${negozio}`.execute(db)
+    }
   })
 })

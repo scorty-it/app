@@ -22,8 +22,10 @@ export function daOsmNegozio(e: ElementoOsm): Impianto | null {
     nome,
     marchio: marchio !== nome ? marchio : null,
     indirizzo: [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ') || null,
-    comune: t['addr:city'] || null,
-    provincia: t['addr:province'] || null,
+    // Comune e provincia non si leggono da OSM: nei negozi mancano quasi sempre (60 su 60 senza provincia nel controllo
+    // del 23/10). Li scrive salvaImpianti dai confini ISTAT, in base alle coordinate (territorio.ts).
+    comune: null,
+    provincia: null,
     lat,
     lon,
     prodotti: BENI,

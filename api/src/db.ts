@@ -104,6 +104,13 @@ export interface DB {
     chiusa_il: Date | null
     creata_il: Generated<Date>
   }
+  confini_comuni: {
+    codice: string // codice ISTAT del comune
+    comune: string
+    provincia: string // sigla
+    versione: string
+    geom: string // geometry(MultiPolygon, 4326): si scrive con ST_BuildArea (territorio.ts)
+  }
   andamento: {
     provincia: string
     ora: Date

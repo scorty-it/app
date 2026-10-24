@@ -5,11 +5,11 @@ import { Link } from 'wouter'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { titoloProvincia } from './anteprima.ts'
-import { browserInterno, conNotizie, finitiSu, fraseVuota, gruppo, momento, nomeFile, oraNotizia, testoBollettino, valoreIndicatore } from './bollettino.ts'
+import { browserInterno, conNotizie, finitiSu, fraseVuota, fraseVuotaSpesa, gruppo, momento, nomeFile, oraNotizia, testoBollettino, valoreIndicatore } from './bollettino.ts'
 import { disegnaBollettino } from './bollettino-immagine.ts'
 import { creaPdf } from './bollettino-pdf.ts'
 import { ETICHETTA, condividiTesto, conFonte } from './condividi.ts'
-import { caricaBollettino, type BollettinoProvincia, type ComuneBollettino } from './dati.ts'
+import { caricaBollettino, type BeneSenza, type BollettinoProvincia, type ComuneBollettino } from './dati.ts'
 import { Andamento } from './GraficoAndamento.tsx'
 import { Incorpora } from './Incorpora.tsx'
 import { ZOOM_SPILLI } from './Mappa.tsx'
@@ -17,10 +17,13 @@ import { Indicatore } from './Marchio.tsx'
 import { Pagina } from './Pagine.tsx'
 import { nomeProvincia, provinciaNota } from './province.ts'
 import { SimboloStato } from './SchedaPunto.tsx'
+import { nomeInFrase } from './tipi.ts'
 
 const ALLE_PROVINCE = { href: '/province', etichetta: 'Torna alle province' }
 const APRI_NEL_BROWSER = 'Per scaricare il bollettino apri la pagina in Chrome o Safari'
 const COLORI = ['verde', 'giallo', 'rosso'] as const
+// «da confermare»: una sola segnalazione. Stessa etichetta per i comuni senza carburante e per quelli senza beni.
+const DA_CONFERMARE = 'rounded-full bg-amber-100 px-2 text-xs font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-200'
 const sullaMappa = (zoom: number, p: { lat: number; lon: number }) => `/#${zoom}/${p.lat.toFixed(4)}/${p.lon.toFixed(4)}`
 
 // La situazione di una provincia per enti e testate: in cima i comuni senza carburante, in fondo il bollettino da condividere.
@@ -156,8 +159,49 @@ function Contenuto({ b, nome, url }: { b: BollettinoProvincia; nome: string; url
         ))}
       </Elenco>
 
+      <Spesa b={b} />
+
       <BarraCondivisione b={b} nome={nome} url={url} />
     </>
+  )
+}
+
+// Dopo il carburante, la spesa: quanti negozi hanno notizie, l'andamento dei comuni senza beni e, bene per bene, i comuni senza.
+// Cosa dire lo decidono le funzioni di andamento.ts e bollettino.ts, mai il solo numero dei comuni: senza notizie dai negozi
+// «nessun comune senza beni» sembrerebbe che vada tutto bene. Un server vecchio non manda la spesa: la sezione non c'è.
+function Spesa({ b }: { b: BollettinoProvincia }) {
+  if (!b.spesa) return null
+  const { negozi, con_notizie, beni } = b.spesa
+  const vuota = fraseVuotaSpesa(b)
+  return (
+    <section className="space-y-3 border-t pt-2">
+      <div className="space-y-1">
+        <h2>Spesa</h2>
+        {con_notizie > 0 && <p className="text-sm text-muted-foreground">{con_notizie} su {negozi} negozi con notizie recenti</p>}
+        {vuota && <p>{vuota}</p>}
+      </div>
+      <Andamento b={b} mondo="spesa" />
+      {!vuota && beni.map((x) => <BeneSenzaComuni key={x.bene} x={x} />)}
+    </section>
+  )
+}
+
+// I comuni senza un bene. Niente collegamento alla mappa: per la spesa il server manda solo il nome del comune.
+function BeneSenzaComuni({ x }: { x: BeneSenza }) {
+  return (
+    <div className="space-y-1.5">
+      <h3 className="flex items-center gap-2 font-semibold">
+        <SimboloStato colore="rosso" /> Senza {nomeInFrase(x.bene)} ({x.comuni.length})
+      </h3>
+      <ul className="divide-y rounded-2xl border px-3">
+        {x.comuni.map((c) => (
+          <li key={c.comune} className="flex min-h-10 items-center gap-2 py-1.5">
+            <span className="min-w-0 flex-1 font-semibold">{c.comune}</span>
+            {!c.confermato && <span className={DA_CONFERMARE}>da confermare</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -172,9 +216,7 @@ function RigaComune({ c, b }: { c: ComuneBollettino; b: BollettinoProvincia }) {
           {c.ultima && ` · ultima notizia ${oraNotizia(c.ultima, b.aggiornato_il)}`}
         </span>
         {!c.confermato && (
-          <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 text-xs font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-            da confermare
-          </span>
+          <span className={cn(DA_CONFERMARE, 'mt-1 inline-block')}>da confermare</span>
         )}
       </span>
       <ChevronRight className="size-4 shrink-0 text-muted-foreground" />

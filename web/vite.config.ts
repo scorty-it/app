@@ -30,8 +30,8 @@ function pagineStatiche(): Plugin {
         const html = String(indice.source)
         const emetti = (fileName: string, source: string) => this.emitFile({ type: 'asset', fileName, source })
         emetti('province.html', conTesta(html, {
-          titolo: 'Carburante per provincia, oggi – Scorty',
-          descrizione: 'I comuni senza carburante in ogni provincia coperta da Scorty, dalle segnalazioni di chi è sul posto.',
+          titolo: 'Carburante e spesa per provincia, oggi – Scorty',
+          descrizione: 'I comuni senza carburante o senza beni essenziali in ogni provincia coperta da Scorty, dalle segnalazioni di chi è sul posto.',
           sito: SITO, percorso: '/province',
         }))
         for (const [sigla, nome] of province) {
@@ -56,7 +56,7 @@ export default defineConfig({
       manifest: {
         name: 'Scorty – mappa civica delle scorte',
         short_name: 'Scorty',
-        description: "Dove c'è carburante durante scioperi e crisi di approvvigionamento, dalle segnalazioni di chi è sul posto.",
+        description: "Dove c'è carburante e dove si trova la spesa durante scioperi e crisi di approvvigionamento, dalle segnalazioni di chi è sul posto.",
         lang: 'it',
         start_url: '/',
         display: 'standalone',

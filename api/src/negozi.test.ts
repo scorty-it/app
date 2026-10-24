@@ -23,11 +23,11 @@ describe('negozi da OpenStreetMap', () => {
     assert.equal(daOsmNegozio(nodo({ shop: 'supermarket' }))?.nome, 'Supermercato')
   })
 
-  test('senza indirizzo i campi sono null; con indirizzo si compongono', () => {
+  test('senza indirizzo il campo è null; con indirizzo si compone la via. Comune e provincia non si leggono da OSM: li dà il confine', () => {
     const n = daOsmNegozio(nodo({ shop: 'supermarket' }))
     assert.deepEqual([n?.indirizzo, n?.comune, n?.provincia], [null, null, null])
     const c = daOsmNegozio(nodo({ shop: 'supermarket', name: 'Sole', brand: 'Conad', 'addr:street': 'Via Roma', 'addr:housenumber': '5', 'addr:city': 'Eboli', 'addr:province': 'SA' }))
-    assert.deepEqual([c?.nome, c?.marchio, c?.indirizzo, c?.comune, c?.provincia], ['Sole', 'Conad', 'Via Roma 5', 'Eboli', 'SA'])
+    assert.deepEqual([c?.nome, c?.marchio, c?.indirizzo, c?.comune, c?.provincia], ['Sole', 'Conad', 'Via Roma 5', null, null])
   })
 
   test('un negozio dismesso si scarta', () => {

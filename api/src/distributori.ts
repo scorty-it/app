@@ -7,6 +7,7 @@ import { sql } from 'kysely'
 import { comuneUfficiale, comuniIgnoti } from './comuni.ts'
 import { db, type Prodotto, type TipoPunto } from './db.ts'
 import { CARBURANTI } from './prodotti.ts'
+import { assegnaComuniNegozi } from './territorio.ts'
 
 export interface Prezzo {
   prodotto: Prodotto
@@ -237,6 +238,8 @@ export async function salvaImpianti(impianti: Impianto[], fonte: Fonte, tipo: Ti
           attivo = true, aggiornato_il = now()
       `.execute(tx)
     }
+    // Comune e provincia dei negozi li danno i confini ISTAT, nella stessa transazione: mai un negozio senza comune a metà.
+    if (tipo === 'negozio') await assegnaComuniNegozi(tx)
     // I prezzi della fonte si sostituiscono tutti: valgono solo quelli comunicati per ultimi.
     const prezzi = impianti.flatMap((x) => (x.prezzi ?? []).map((p) => ({ id_fonte: x.id_fonte, ...p })))
     if (prezzi.length) {

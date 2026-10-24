@@ -210,6 +210,7 @@ export interface Provincia {
   verde: number
   giallo: number
   rosso: number
+  spesa?: { negozi: number; con_notizie: number; comuni_senza: number } // manca se il server non è ancora aggiornato
 }
 
 export const caricaProvince = () => chiama<Provincia[]>('/api/province')
@@ -228,6 +229,23 @@ export interface ComuneBollettino {
   confermato: boolean // solo per i senza carburante: false vuol dire «da confermare»
 }
 
+// La spesa di una provincia, dallo stesso calcolo del server (api/src/bollettino.ts).
+export interface ComuneSenzaBene {
+  comune: string
+  confermato: boolean // false vuol dire «da confermare»
+}
+
+export interface BeneSenza {
+  bene: Prodotto
+  comuni: ComuneSenzaBene[] // prima i confermati, poi in ordine alfabetico
+}
+
+export interface SpesaBollettino {
+  negozi: number // tutti i negozi della provincia, anche senza comune
+  con_notizie: number // quelli con almeno un bene dallo stato noto nelle ultime 24 ore
+  beni: BeneSenza[] // solo i beni con almeno un comune senza, nell'ordine di BENI
+}
+
 export interface BollettinoProvincia {
   provincia: string // sigla
   aggiornato_il: string // ISO, quando il server l'ha calcolato
@@ -239,9 +257,10 @@ export interface BollettinoProvincia {
   lon: number
   comuni: ComuneBollettino[]
   andamento?: FotografiaProvincia[] // ultime 24 ore, dalla più vecchia; manca se il server non è ancora aggiornato
+  spesa?: SpesaBollettino // manca se il server non è ancora aggiornato
 }
 
-// Una fotografia oraria della provincia (api/db/migrazioni/009_andamento.sql).
+// Una fotografia oraria della provincia (api/db/migrazioni/009_andamento.sql, 012_andamento_spesa.sql e 014_spesa_con_notizie.sql).
 export interface FotografiaProvincia {
   ora: string // ISO, ora piena
   comuni_senza: number
@@ -250,6 +269,11 @@ export interface FotografiaProvincia {
   verde: number
   giallo: number
   rosso: number
+  spesa_comuni_senza: number | null // null: fotografia di prima della spesa, un buco nel grafico e non uno zero
+  spesa_comuni_senza_confermati: number | null
+  // Quanti negozi avevano notizie in quell'ora. 0: nessuna notizia, e allora gli zeri della spesa sono un buco; null: fotografia di prima
+  // di questo dato. Facoltativo: un server vecchio non lo manda.
+  spesa_con_notizie?: number | null
 }
 
 // I canali Telegram degli avvisi, uno per regione: solo quelli in cui il bot scrive davvero (api/src/avvisi.ts).

@@ -6,6 +6,7 @@ dipendenze: api/package.json api/package-lock.json web/package.json web/package-
 deploy: compose.yml Caddyfile api/Dockerfile api/.dockerignore web/Dockerfile web/.dockerignore .env.example .gitignore scripts
 client: web/src web/public web/index.html web/vite.config.ts web/tsconfig.json web/components.json
 tooling: .githooks .claude CLAUDE.md
-# Non si rivedono: documentazione per le persone, test, immagini del marchio, dati di esempio.
+# Non si rivedono: documentazione per le persone, test, immagini del marchio, dati di esempio e dati generati.
+# Il hook li lascia fuori da diff.patch (stat.txt li elenca): un file da MB su una riga renderebbe il diff illeggibile.
 # CLAUDE.md e i SKILL.md invece sì: sono istruzioni anche per chi fa la review.
-exclude: README.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md LICENSE docs/** **/*.test.ts scripts/test/** marchio/** api/db/demo-distributori.json
+exclude: README.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md LICENSE docs/** **/*.test.ts scripts/test/** marchio/** api/db/demo-distributori.json api/db/confini-comuni.json

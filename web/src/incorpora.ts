@@ -13,7 +13,7 @@ const attributo = (s: string) => s.replaceAll('&', '&amp;').replaceAll('"', '&qu
 
 export function codiceIframe(origine: string, sigla: string, nome: string, formato: Formato) {
   const m = MISURE[formato]
-  const titolo = attributo(`Carburante in provincia di ${nome} – Scorty`)
+  const titolo = attributo(`Carburante e spesa in provincia di ${nome} – Scorty`)
   return `<iframe src="${origine}/widget/province/${sigla}" title="${titolo}" width="${m.larghezza}" height="${m.altezza}" style="${m.stile}" loading="lazy"></iframe>`
 }
 
